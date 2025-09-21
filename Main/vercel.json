@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/reminders/send?key=PROD_SECRET&days=14",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}

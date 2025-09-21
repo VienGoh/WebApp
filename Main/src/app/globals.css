@@ -1,0 +1,55 @@
+/* === Aktifkan Tailwind (v4 plugin) === */
+@import "tailwindcss";
+
+/* ====== Layout dasar (punyamu, dipertahankan) ====== */
+:root {
+  --bg: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-weak: #eff6ff;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+/* boleh tetap pakai kelas ini di <body class="app-root">, atau pakai kelas Tailwind di layout */
+body.app-root {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* NB: Tailwind punya .container sendiri. Kalau takut bentrok, ganti namanya ke .app-container di layout */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+/* Header & Nav */
+.app-header { border-bottom: 1px solid var(--border); background: #fff; position: sticky; top: 0; z-index: 50; }
+.brand { display: flex; align-items: baseline; gap: 8px; padding: 14px 0; }
+.brand-link { font-weight: 700; text-decoration: none; color: var(--text); }
+.brand-sub { font-size: 12px; color: var(--muted); }
+
+.nav { display: flex; flex-wrap: wrap; gap: 12px; padding-bottom: 12px; }
+.nav a {
+  text-decoration: none; color: var(--text); padding: 6px 10px; border-radius: 10px;
+  border: 1px solid transparent;
+}
+.nav a:hover { background: var(--accent-weak); border-color: var(--border); }
+
+/* Main & Footer */
+.app-main { padding: 20px 0 40px; }
+.app-footer { border-top: 1px solid var(--border); background: #fff; padding: 12px 0; color: var(--muted); }
+
+/* ====== Sentuhan Tailwind via @apply (biar konsisten) ====== */
+@layer base {
+  table { @apply w-full border-collapse text-sm; }
+  th, td { @apply px-3 py-2 border-b border-slate-100 text-left; }
+  input, select, textarea, button { @apply rounded-md; } /* font:inherit sudah dari user agent */
+  button { @apply cursor-pointer border border-slate-200 bg-white rounded-lg transition; }
+  button:hover { @apply bg-blue-50 border-blue-300; }
+}
+
+/* Util kecil tambahan (opsional) */
+.card { @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm; }
+.section-title { @apply mb-3 text-lg font-semibold; }

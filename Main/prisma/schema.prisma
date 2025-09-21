@@ -1,0 +1,85 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/* ---------- Master ---------- */
+model Customer {
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String?
+  email     String?
+  createdAt DateTime  @default(now())
+  vehicles  Vehicle[]
+}
+
+model Vehicle {
+  id                  Int            @id @default(autoincrement())
+  customerId          Int
+  plate               String         @unique
+  brand               String
+  model               String?
+  year                Int?
+  createdAt           DateTime       @default(now())
+  serviceIntervalDays Int            @default(180)  // ← letakkan DI DALAM model
+  lastReminderEmailAt DateTime?
+  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  services ServiceOrder[]
+}
+
+model Mechanic {
+  id       Int            @id @default(autoincrement())
+  name     String         @unique
+  active   Boolean        @default(true)
+  services ServiceOrder[]
+}
+
+model Part {
+  id        Int           @id @default(autoincrement())
+  // sku dibuat opsional supaya seed tidak wajib mengisi
+  sku       String?       @unique
+  name      String
+  price     Float         @default(0)
+  createdAt DateTime      @default(now())
+  usages    ServicePart[]
+}
+
+/* ---------- Detail ---------- */
+model ServiceItem {
+  id             Int          @id @default(autoincrement())
+  serviceOrderId Int
+  name           String       // ← selaraskan dengan seed/kode
+  price          Float        @default(0)
+
+  order ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+}
+
+model ServicePart {
+  id             Int          @id @default(autoincrement())
+  serviceOrderId Int
+  partId         Int
+  qty            Int          @default(1)
+  unitPrice      Float        @default(0)
+
+  order ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  part  Part         @relation(fields: [partId], references: [id])
+}
+
+/* ---------- Header ---------- */
+model ServiceOrder {
+  id         Int        @id @default(autoincrement())
+  vehicleId  Int
+  mechanicId Int?
+  date       DateTime   @default(now())
+  odometer   Int?
+  notes      String?
+
+  items   ServiceItem[]
+  parts   ServicePart[]
+  vehicle Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  mechanic Mechanic?  @relation(fields: [mechanicId], references: [id])
+}
