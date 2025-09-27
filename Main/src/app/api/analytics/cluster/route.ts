@@ -1,9 +1,22 @@
+// src/app/api/analytics/cluster/route.ts
 export const runtime = "nodejs";
 
-import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-// ---------- K-MEANS LOADER + FALLBACK ----------
+/* ----------------------- Auth Gate (Peneliti only) ----------------------- */
+
+async function mustPeneliti() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || session.user.role !== "PENELITI") {
+    return NextResponse.json({ error: "Forbidden (PENELITI only)" }, { status: 403 });
+  }
+  return null;
+}
+
+/* ------------------ K-MEANS LOADER + SIMPLE FALLBACK --------------------- */
 
 type KMeansFn = (data: number[][], k: number) => {
   clusters: number[];
@@ -32,8 +45,8 @@ const simpleKMeans: KMeansFn = (data, k) => {
   const dist2 = (a: number[], b: number[]) => {
     let s = 0;
     for (let i = 0; i < a.length; i++) {
-      const d = a[i] - b[i];
-      s += d * d;
+      const dd = a[i] - b[i];
+      s += dd * dd;
     }
     return s;
   };
@@ -112,18 +125,22 @@ async function getKMeans(): Promise<KMeansFn> {
   return simpleKMeans;
 }
 
-// ---------- UTIL & HANDLER ----------
+/* --------------------------- Util & Handler ------------------------------ */
 
 function daysBetween(a: Date, b: Date) {
   return Math.abs(+a - +b) / 86_400_000;
 }
 
 export async function GET(req: Request) {
+  // 🔒 PENELITI-only
+  const denied = await mustPeneliti();
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
     const requestedK = Number(searchParams.get("k") ?? 3);
 
-    const kmeans = await getKMeans(); // ← selalu mengembalikan fungsi (paket atau fallback)
+    const kmeans = await getKMeans(); // ← fungsi dari paket atau fallback
 
     const vehicles = await prisma.vehicle.findMany({
       include: {
@@ -161,7 +178,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ k: 0, centroids: [], result: [] });
     }
 
-    const k = Math.max(1, Math.min(Number.isFinite(requestedK) ? Math.floor(requestedK) : 3, vectors.length));
+    const k = Math.max(
+      1,
+      Math.min(Number.isFinite(requestedK) ? Math.floor(requestedK) : 3, vectors.length)
+    );
 
     const { clusters, centroids } = kmeans(vectors, k);
     const result = ids.map((id, i) => ({ vehicleId: id, cluster: clusters[i] }));

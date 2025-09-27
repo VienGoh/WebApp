@@ -1,40 +1,26 @@
-export const runtime = "nodejs";
-
-import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-const Body = z.object({
-  name: z.string().min(1, "Nama wajib diisi"),
-  phone: z.string().trim().optional().nullable(),
-  email: z.string().trim().email("Email tidak valid").optional().nullable(),
-});
-
-function norm(v?: string | null) {
-  const s = (v ?? "").trim();
-  return s ? s : null;
+async function mustAuth(roles: Array<"ADMIN"|"PENELITI">) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || !roles.includes(session.user.role as any)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }
 
 export async function GET() {
-  const rows = await prisma.customer.findMany({
-    orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, phone: true, email: true, createdAt: true },
-  });
-  return NextResponse.json(rows);
+  const denied = await mustAuth(["ADMIN","PENELITI"]);
+  if (denied) return denied as any;
+  const list = await prisma.customer.findMany({ orderBy: { id: "desc" } });
+  return NextResponse.json(list);
 }
 
 export async function POST(req: Request) {
-  const json = await req.json();
-  const body = Body.parse(json);
-
-  const created = await prisma.customer.create({
-    data: {
-      name: body.name,
-      phone: norm(body.phone),
-      email: norm(body.email),
-    },
-    select: { id: true, name: true, phone: true, email: true, createdAt: true },
-  });
-
+  const denied = await mustAuth(["ADMIN"]); // contoh: create khusus ADMIN
+  if (denied) return denied as any;
+  const body = await req.json();
+  const created = await prisma.customer.create({ data: body });
   return NextResponse.json(created, { status: 201 });
 }

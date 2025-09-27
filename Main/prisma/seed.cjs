@@ -1,113 +1,166 @@
-﻿/* prisma/seed.cjs */
+﻿// prisma/seed.cjs
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 const prisma = new PrismaClient();
 
-const r = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
-const pick = (arr)=>arr[r(0,arr.length-1)];
+async function upsertUsers() {
+  const adminHash = await bcrypt.hash("admin123", 10);
+  const penelitiHash = await bcrypt.hash("peneliti123", 10);
 
-const FIRST = ["Budi","Andi","Rizky","Ahmad","Fajar","Dwi","Bayu","Rama","Yudha","Faris","Siti","Aisyah","Dewi","Nadia","Wulan","Indah","Rina","Putri","Aulia","Maya","Joko","Teguh","Hendra","Yoga","Galih"];
-const LAST  = ["Santoso","Pratama","Nugraha","Saputra","Maulana","Firmansyah","Kurniawan","Wibowo","Setiawan","Wijaya","Lestari","Anggraini","Saraswati","Putri","Siregar"];
-const REG   = ["B","D","F","H","L","N","AB","AE","AG","E","R","S","W","DK","KT","DA"];
-const BRANDS = [
-  ["Toyota",["Avanza","Kijang","Agya","Yaris"]],
-  ["Honda",["Brio","Jazz","HR-V","CR-V"]],
-  ["Daihatsu",["Xenia","Sigra","Ayla","Terios"]],
-  ["Suzuki",["Ertiga","Karimun","Ignis","APV"]],
-  ["Mitsubishi",["Xpander","Pajero","L300"]],
-  ["Yamaha",["NMAX","Aerox","Mio"]],
-  ["Honda (MC)",["Beat","Vario","Scoopy","CB150R"]],
-];
-const MECHS = ["Slamet Riyadi","Roni Saputra","Arif Kurnia","Dedi Hidayat","Imam Santoso","Tono Prasetyo","Jajang Sopyan"];
-const ITEMS = [
-  ["Ganti Oli",120_000],["Tune Up",180_000],["Service Rem",150_000],
-  ["Spooring & Balancing",250_000],["Cek Kelistrikan",90_000],
-  ["Ganti Busi",60_000],["Bersih Throttle Body",160_000],
-];
-const PARTS = [
-  ["Oli Mesin 1L",95_000],["Filter Oli",45_000],["Filter Udara",75_000],
-  ["Busi",35_000],["Kampas Rem",120_000],["Aki 35Ah",750_000],
-  ["Karet Wiper",40_000],["V-Belt",85_000],
-];
+  await prisma.user.upsert({
+    where: { email: "admin@local.test" },
+    update: {},
+    create: {
+      email: "admin@local.test",
+      name: "Admin",
+      password: adminHash,
+      role: "ADMIN",
+    },
+  });
 
-const plate = ()=>{
-  const letters="BCDFGHJKLMNPRSTVWY"; let suf="";
-  for(let i=0;i<r(2,3);i++) suf+=letters[r(0,letters.length-1)];
-  return `${pick(REG)} ${r(1000,9999)} ${suf}`;
-};
-const phone = ()=>`+62${r(811,899)}${r(1000,9999)}${r(1000,9999)}`;
-const email = (name,i)=>`${name.toLowerCase().replace(/\s+/g,".")}${i}@mail.id`;
-const addDays=(d,n)=>new Date(d.getTime()+n*86400000);
+  await prisma.user.upsert({
+    where: { email: "peneliti@local.test" },
+    update: {},
+    create: {
+      email: "peneliti@local.test",
+      name: "Peneliti",
+      password: penelitiHash,
+      role: "PENELITI",
+    },
+  });
 
-async function main(){
-  // bersihkan tabel
-  await prisma.servicePart.deleteMany();
-  await prisma.serviceItem.deleteMany();
-  await prisma.serviceOrder.deleteMany();
-  await prisma.vehicle.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.mechanic.deleteMany();
-  await prisma.part.deleteMany();
-
-  // mekanik
-  await prisma.mechanic.createMany({ data: MECHS.map(name=>({name})) });
-
-  // parts
-  const parts = [];
-  for (const [name,price] of PARTS) {
-    parts.push(await prisma.part.create({ data:{ name, price } }));
-  }
-
-  // customers + vehicles + orders
-  const customerCount = 25;
-  for (let i=0;i<customerCount;i++){
-    const full = `${pick(FIRST)} ${pick(LAST)}`;
-    const cust = await prisma.customer.create({
-      data: { name: full, phone: phone(), email: email(full,i) }
-    });
-
-    for (let v=0; v<r(1,2); v++){
-      const [brand,models] = pick(BRANDS);
-      const veh = await prisma.vehicle.create({
-        data: {
-          customerId: cust.id,
-          plate: plate(),
-          brand, model: pick(models),
-          year: r(2010,2024),
-          serviceIntervalDays: [120,150,180,210,240][r(0,4)],
-        }
-      });
-
-      let odo = r(10_000,120_000);
-      let t = addDays(new Date(), -r(500,700));
-      for (let o=0;o<r(2,6);o++){
-        t   = addDays(t, r(25,120));
-        odo = odo + r(800,7000);
-        const order = await prisma.serviceOrder.create({
-          data:{
-            vehicleId: veh.id,
-            date: t,
-            odometer: odo,
-            notes: Math.random()<0.2 ? "Keluhan: bunyi pada roda depan" : null,
-            mechanic: { connect: { name: pick(MECHS) } }
-          }
-        });
-        // items 1–3
-        for (let s=0;s<r(1,3);s++){
-          const [name,price] = pick(ITEMS);
-          await prisma.serviceItem.create({ data:{ serviceOrderId: order.id, name, price }});
-        }
-        // parts 0–3
-        for (let pz=0;pz<r(0,3);pz++){
-          const pt = pick(parts);
-          const qty = r(1, pt.name.includes("Oli")?4:2);
-          await prisma.servicePart.create({
-            data:{ serviceOrderId: order.id, partId: pt.id, qty, unitPrice: pt.price }
-          });
-        }
-      }
-    }
-  }
-  console.log("✅ Seed selesai.");
+  console.log("✓ Users (ADMIN & PENELITI)");
 }
 
-main().catch(e=>{console.error(e);process.exit(1)}).finally(async()=>{await prisma.$disconnect()});
+async function seedMasters() {
+  // Customers
+  const c1 = await prisma.customer.create({
+    data: { name: "Budi Santoso", phone: "0812-1111-2222", email: "budi@example.com" },
+  });
+  const c2 = await prisma.customer.create({
+    data: { name: "Siti Rahma", phone: "0812-3333-4444", email: "siti@example.com" },
+  });
+
+  // Vehicles (plate unique, serviceIntervalDays ada default 180)
+  const v1 = await prisma.vehicle.upsert({
+    where: { plate: "BK1234AA" },
+    update: {},
+    create: {
+      customerId: c1.id,
+      plate: "BK1234AA",
+      brand: "Toyota",
+      model: "Avanza",
+      year: 2018,
+      // serviceIntervalDays akan pakai default 180
+    },
+  });
+
+  const v2 = await prisma.vehicle.upsert({
+    where: { plate: "BK9876ZZ" },
+    update: {},
+    create: {
+      customerId: c2.id,
+      plate: "BK9876ZZ",
+      brand: "Honda",
+      model: "Brio",
+      year: 2020,
+    },
+  });
+
+  // Mechanics (name unique)
+  const m1 = await prisma.mechanic.upsert({
+    where: { name: "Anton" },
+    update: {},
+    create: { name: "Anton", active: true },
+  });
+  const m2 = await prisma.mechanic.upsert({
+    where: { name: "Rudi" },
+    update: {},
+    create: { name: "Rudi", active: true },
+  });
+
+  // Parts (sku optional tapi kita isi agar unik)
+  const pOil = await prisma.part.upsert({
+    where: { sku: "OIL-10W40-1L" },
+    update: {},
+    create: { sku: "OIL-10W40-1L", name: "Oli Mesin 10W-40 1L", price: 95000 },
+  });
+  const pFilter = await prisma.part.upsert({
+    where: { sku: "FLT-ENG-AVZ" },
+    update: {},
+    create: { sku: "FLT-ENG-AVZ", name: "Filter Oli Avanza", price: 45000 },
+  });
+  const pBrake = await prisma.part.upsert({
+    where: { sku: "BRK-PAD-FR" },
+    update: {},
+    create: { sku: "BRK-PAD-FR", name: "Kampas Rem Depan", price: 185000 },
+  });
+
+  console.log("✓ Masters (Customer, Vehicle, Mechanic, Part)");
+
+  return { vehicles: { v1, v2 }, mechanics: { m1, m2 }, parts: { pOil, pFilter, pBrake } };
+}
+
+async function seedTransactions(ctx) {
+  const { v1, v2 } = ctx.vehicles;
+  const { m1 } = ctx.mechanics;
+  const { pOil, pFilter, pBrake } = ctx.parts;
+
+  // Service Order untuk v1 (ganti oli + filter)
+  await prisma.serviceOrder.create({
+    data: {
+      vehicleId: v1.id,
+      mechanicId: m1.id,
+      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30), // 30 hari lalu
+      odometer: 45000,
+      notes: "Servis berkala 10.000 km",
+      items: {
+        create: [
+          { name: "Jasa Ganti Oli", price: 30000 },
+          { name: "Pemeriksaan Umum", price: 20000 },
+        ],
+      },
+      parts: {
+        create: [
+          { partId: pOil.id, qty: 3, unitPrice: pOil.price },
+          { partId: pFilter.id, qty: 1, unitPrice: pFilter.price },
+        ],
+      },
+    },
+  });
+
+  // Service Order untuk v2 (cek rem + ganti kampas)
+  await prisma.serviceOrder.create({
+    data: {
+      vehicleId: v2.id,
+      mechanicId: m1.id,
+      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10), // 10 hari lalu
+      odometer: 22000,
+      notes: "Rem depan bunyi",
+      items: {
+        create: [{ name: "Jasa Ganti Kampas Rem", price: 40000 }],
+      },
+      parts: {
+        create: [{ partId: pBrake.id, qty: 1, unitPrice: pBrake.price }],
+      },
+    },
+  });
+
+  console.log("✓ Transactions (ServiceOrder, ServiceItem, ServicePart)");
+}
+
+async function main() {
+  await upsertUsers();
+  const ctx = await seedMasters();
+  await seedTransactions(ctx);
+  console.log("✅ SEED SELESAI");
+}
+
+main()
+  .catch((e) => {
+    console.error("Seed error:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -1,13 +1,9 @@
-﻿import Link from "next/link";
+﻿// src/app/page.tsx
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
-export default function Home() {
-  return (
-    <section>
-      <h1>Selamat datang 👋</h1>
-      <p>Ini contoh <i>CRUD</i> sederhana menggunakan <i>Next.js</i> + <i>Prisma</i> + <i>SQLite</i>.</p>
-      <p>
-        Mulai dari halaman <Link href="/items">Items</Link>.
-      </p>
-    </section>
-  );
+export default async function Home() {
+  const session = await getServerSession(authOptions);
+  redirect(session?.user ? "/dashboard" : "/public/login");
 }

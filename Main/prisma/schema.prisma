@@ -1,3 +1,6 @@
+// ==============================
+// Datasource & Generator
+// ==============================
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
@@ -7,79 +10,132 @@ generator client {
   provider = "prisma-client-js"
 }
 
-/* ---------- Master ---------- */
+// ==============================
+// Enums
+// ==============================
+enum Role {
+  ADMIN
+  PENELITI
+}
+
+// ==============================
+// Master
+// ==============================
 model Customer {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
   phone     String?
   email     String?
-  createdAt DateTime  @default(now())
-  vehicles  Vehicle[]
+  createdAt DateTime @default(now())
+
+  vehicles Vehicle[]
+
+  @@index([name])
+  @@index([email])
 }
 
 model Vehicle {
-  id                  Int            @id @default(autoincrement())
+  id                  Int       @id @default(autoincrement())
   customerId          Int
-  plate               String         @unique
+  plate               String    @unique
   brand               String
   model               String?
   year                Int?
-  createdAt           DateTime       @default(now())
-  serviceIntervalDays Int            @default(180)  // ← letakkan DI DALAM model
+  createdAt           DateTime  @default(now())
+  serviceIntervalDays Int       @default(180)
+  // Reminder terakhir terkirim (opsional)
   lastReminderEmailAt DateTime?
+
   customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   services ServiceOrder[]
+
+  @@index([customerId])
+  @@index([plate])
 }
 
 model Mechanic {
-  id       Int            @id @default(autoincrement())
-  name     String         @unique
-  active   Boolean        @default(true)
+  id     Int     @id @default(autoincrement())
+  name   String  @unique
+  active Boolean @default(true)
+
   services ServiceOrder[]
 }
 
 model Part {
-  id        Int           @id @default(autoincrement())
-  // sku dibuat opsional supaya seed tidak wajib mengisi
-  sku       String?       @unique
+  id        Int      @id @default(autoincrement())
+  // SKU dibuat opsional supaya seed tidak wajib mengisi
+  sku       String?  @unique
   name      String
-  price     Float         @default(0)
-  createdAt DateTime      @default(now())
-  usages    ServicePart[]
+  price     Float    @default(0)
+  createdAt DateTime @default(now())
+
+  usages ServicePart[]
+
+  @@index([name])
 }
 
-/* ---------- Detail ---------- */
+// ==============================
+// Detail
+// ==============================
 model ServiceItem {
-  id             Int          @id @default(autoincrement())
+  id             Int    @id @default(autoincrement())
   serviceOrderId Int
-  name           String       // ← selaraskan dengan seed/kode
-  price          Float        @default(0)
+  // Selaraskan dengan seed/kode
+  name           String
+  price          Float  @default(0)
 
   order ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+
+  @@index([serviceOrderId])
 }
 
 model ServicePart {
-  id             Int          @id @default(autoincrement())
+  id             Int   @id @default(autoincrement())
   serviceOrderId Int
   partId         Int
-  qty            Int          @default(1)
-  unitPrice      Float        @default(0)
+  qty            Int   @default(1)
+  unitPrice      Float @default(0)
 
   order ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
   part  Part         @relation(fields: [partId], references: [id])
+
+  // Mencegah duplikasi part yang sama pada order yang sama
+  @@unique([serviceOrderId, partId])
+  @@index([serviceOrderId])
+  @@index([partId])
 }
 
-/* ---------- Header ---------- */
+// ==============================
+// Header
+// ==============================
 model ServiceOrder {
-  id         Int        @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   vehicleId  Int
   mechanicId Int?
-  date       DateTime   @default(now())
+  date       DateTime @default(now())
   odometer   Int?
   notes      String?
 
-  items   ServiceItem[]
-  parts   ServicePart[]
-  vehicle Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  mechanic Mechanic?  @relation(fields: [mechanicId], references: [id])
+  items ServiceItem[]
+  parts ServicePart[]
+
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  mechanic Mechanic? @relation(fields: [mechanicId], references: [id])
+
+  @@index([vehicleId])
+  @@index([mechanicId])
+  @@index([date])
+}
+
+// ==============================
+// Auth/User
+// ==============================
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  password  String // bcrypt hash
+  role      Role     @default(PENELITI)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
