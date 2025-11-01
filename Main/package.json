@@ -14,7 +14,8 @@
     "reminders:run": "tsx scripts/run-reminders.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.16.2",
+    "@faker-js/faker": "^10.1.0",
+    "@prisma/client": "^6.18.0",
     "bcryptjs": "^3.0.2",
     "dotenv": "^16.4.5",
     "ml-kmeans": "^6.0.0",
