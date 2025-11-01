@@ -33,7 +33,7 @@ const Body = z.object({
   mechanicName: z.string().optional(), // alternatif kalau mekanik baru
   date: z.string().optional(),
   odometer: z.coerce.number().int().optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional().nullable(),
   items: z.array(Item).default([]),
   parts: z.array(Part).default([]),
 });
