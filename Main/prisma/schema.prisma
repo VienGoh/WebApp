@@ -28,7 +28,7 @@ model Customer {
   email     String?
   createdAt DateTime @default(now())
 
-  vehicles Vehicle[]
+  vehicles  Vehicle[]
 
   @@index([name])
   @@index([email])
@@ -43,14 +43,20 @@ model Vehicle {
   year                Int?
   createdAt           DateTime  @default(now())
   serviceIntervalDays Int       @default(180)
-  // Reminder terakhir terkirim (opsional)
   lastReminderEmailAt DateTime?
 
   customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   services ServiceOrder[]
+  // opsional: relasi balik ke assignment cluster
+  clusterAssignments ClusterAssignment[]  // ← memudahkan include
+
+  // opsional: cache label cluster paling baru, jika mau dipakai di UI / reminder cepat
+  cachedClusterIdx   Int?
+  clusterUpdatedAt   DateTime?
 
   @@index([customerId])
   @@index([plate])
+  @@index([cachedClusterIdx])
 }
 
 model Mechanic {
@@ -63,7 +69,6 @@ model Mechanic {
 
 model Part {
   id        Int      @id @default(autoincrement())
-  // SKU dibuat opsional supaya seed tidak wajib mengisi
   sku       String?  @unique
   name      String
   price     Float    @default(0)
@@ -80,7 +85,6 @@ model Part {
 model ServiceItem {
   id             Int    @id @default(autoincrement())
   serviceOrderId Int
-  // Selaraskan dengan seed/kode
   name           String
   price          Float  @default(0)
 
@@ -99,7 +103,6 @@ model ServicePart {
   order ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
   part  Part         @relation(fields: [partId], references: [id])
 
-  // Mencegah duplikasi part yang sama pada order yang sama
   @@unique([serviceOrderId, partId])
   @@index([serviceOrderId])
   @@index([partId])
@@ -116,8 +119,8 @@ model ServiceOrder {
   odometer   Int?
   notes      String?
 
-  items ServiceItem[]
-  parts ServicePart[]
+  items   ServiceItem[]
+  parts   ServicePart[]
 
   vehicle  Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   mechanic Mechanic? @relation(fields: [mechanicId], references: [id])
@@ -134,8 +137,50 @@ model User {
   id        String   @id @default(cuid())
   name      String?
   email     String   @unique
-  password  String // bcrypt hash
+  password  String
   role      Role     @default(PENELITI)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// Clustering
+// ==============================
+model ClusterRun {
+  id        Int       @id @default(autoincrement())
+  k         Int
+  sse       Float
+  createdAt DateTime  @default(now())
+
+  centroids ClusterCentroid[]
+  assigns   ClusterAssignment[]
+}
+
+model ClusterCentroid {
+  id     Int   @id @default(autoincrement())
+  runId  Int
+  idx    Int   // index cluster
+  c1     Float
+  c2     Float
+  c3     Float? // tambah kolom sesuai jumlah fitur
+
+  run    ClusterRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, idx])  // ← tiap run, 1 centroid per idx
+  @@index([idx])
+}
+
+model ClusterAssignment {
+  id        Int   @id @default(autoincrement())
+  runId     Int
+  vehicleId Int
+  idx       Int
+
+  run       ClusterRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, vehicleId]) // ← 1 kendaraan dapat 1 label per run
+  @@index([runId])
+  @@index([vehicleId])
+  @@index([idx])
 }

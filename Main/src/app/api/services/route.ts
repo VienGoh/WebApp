@@ -24,13 +24,14 @@ export async function GET() {
   return NextResponse.json(withTotal);
 }
 
-const Item = z.object({ jobName: z.string().min(1), price: z.coerce.number().nonnegative() });
+// ← Item pakai "name"
+const Item = z.object({ name: z.string().min(1), price: z.coerce.number().nonnegative() });
 const Part = z.object({ partId: z.coerce.number().int().positive(), qty: z.coerce.number().int().positive(), unitPrice: z.coerce.number().nonnegative() });
 
 const Body = z.object({
   vehicleId: z.coerce.number().int().positive(),
   mechanicId: z.coerce.number().int().positive().optional(),
-  mechanicName: z.string().optional(), // alternatif kalau mekanik baru
+  mechanicName: z.string().optional(),
   date: z.string().optional(),
   odometer: z.coerce.number().int().optional(),
   notes: z.string().optional(),
@@ -38,11 +39,21 @@ const Body = z.object({
   parts: z.array(Part).default([]),
 });
 
+// helper untuk konsolidasi parts agar lolos UNIQUE(serviceOrderId, partId)
+function normalizeParts(parts: { partId:number; qty:number; unitPrice:number }[]) {
+  const map = new Map<number, { qty:number; unitPrice:number }>();
+  for (const p of parts) {
+    const ex = map.get(p.partId);
+    if (!ex) map.set(p.partId, { qty: p.qty, unitPrice: p.unitPrice });
+    else map.set(p.partId, { qty: ex.qty + p.qty, unitPrice: p.unitPrice }); // asumsi unitPrice terakhir
+  }
+  return Array.from(map, ([partId, v]) => ({ partId, qty: v.qty, unitPrice: v.unitPrice }));
+}
+
 export async function POST(req: Request) {
   try {
     const body = Body.parse(await req.json());
 
-    // kalau tidak ada mechanicId tapi ada mechanicName → upsert mekanik
     let mechanicId = body.mechanicId;
     if (!mechanicId && body.mechanicName) {
       const m = await prisma.mechanic.upsert({
@@ -60,8 +71,8 @@ export async function POST(req: Request) {
         date: body.date ? new Date(body.date) : undefined,
         odometer: body.odometer,
         notes: body.notes,
-        items: { create: body.items },
-        parts: { create: body.parts },
+        items: { create: body.items },                              // ← { name, price }
+        parts: { create: normalizeParts(body.parts) },              // ← konsolidasi
       },
     });
 
