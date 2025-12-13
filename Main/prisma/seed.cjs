@@ -1,96 +1,161 @@
-﻿// prisma/seed.cjs
-const { PrismaClient } = require('@prisma/client');
-const { fakerID_ID: faker } = require('@faker-js/faker'); // locale Indonesia
+﻿// ===========================================================
+//  SEED.CJS – FULL VERSION (TURSO REMOTE DATABASE)
+// ===========================================================
 
-const prisma = new PrismaClient();
+// Load .env
+require("dotenv").config();
 
-// =================== CONFIG (ringan) ===================
+// Turso + Prisma adapter
+const { PrismaClient } = require("@prisma/client");
+const { PrismaLibSql } = require("@prisma/adapter-libsql");
+const { createClient } = require("@libsql/client");
+
+console.log("⚙️  Using Turso (remote libsql) for seeding...");
+
+// create libsql client (Turso)
+const turso = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+
+// connect Prisma to Turso
+const adapter = new PrismaLibSql(turso);
+const prisma = new PrismaClient({ adapter });
+
+// Faker + bcrypt
+const { fakerID_ID: faker } = require("@faker-js/faker");
+const bcrypt = require("bcryptjs");
+
+// ===========================================================
+//  CONFIG
+// ===========================================================
 const N_MECHANICS = 3;
-const DAYS = 892;                      // jumlah hari ke belakang
-const ORDERS_PER_DAY = 4;              // 6 servis per hari
-const N_SERVICE_ORDERS = DAYS * ORDERS_PER_DAY; // auto 2190
-const N_CUSTOMERS = 700;               // cukup untuk kebutuhan order
-const AVG_VEHICLES_PER_CUSTOMER = 1.1; // kebanyakan 1 motor
-const N_PARTS = 200;                   // parts cukup
-const BATCH_SIZE = 200;                // createMany chunk
-const ORDER_BATCH_SIZE = 30;           // paralel kecil (anti timeout)
-const BATCH_DELAY_MS = 120;            // jeda antar batch
-// =======================================================
+const DAYS = 892;
+const ORDERS_PER_DAY = 4;
+const N_SERVICE_ORDERS = DAYS * ORDERS_PER_DAY;
+const N_CUSTOMERS = 700;
+const N_PARTS = 40;
+const BATCH_SIZE = 200;
+const ORDER_BATCH_SIZE = 30;
+const BATCH_DELAY_MS = 120;
 
 // Helpers
-function chunkArray(arr, size) {
-  const chunks = [];
-  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
-  return chunks;
-}
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Telepon +62 (contoh: +62812xxxxxxx)
+function chunk(arr, size) {
+  let out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function priceStep(min, max, step = 500) {
+  const nMin = Math.ceil(min / step);
+  const nMax = Math.floor(max / step);
+  return randInt(nMin, nMax) * step;
+}
+
+// ===========================================================
+//  GENERAL DATA LISTS
+// ===========================================================
+const FIRST = ["Andi","Budi","Citra","Dewi","Eka","Fajar","Gilang","Hendra","Indah","Joko",
+  "Kurnia","Lestari","Mira","Nanda","Oki","Putri","Rizki","Sari","Taufik","Wulan"];
+
+const LAST = ["Saputra","Santoso","Pratama","Wijaya","Hutapea","Siregar","Simanjuntak",
+  "Sinaga","Nasution","Halim","Gunawan","Mahendra","Permata","Ramadhan","Maulana",
+  "Kusuma","Syahputra","Hidayat","Panjaitan","Tanjung"];
+
+function randomIndoName() {
+  const f = pick(FIRST);
+  const l = pick(LAST);
+  return Math.random() < 0.2 ? f : `${f} ${l}`;
+}
+
 function phoneID() {
-  const prefixes = ['812','813','814','815','816','817','818','819','851','852','853','855','856','857','858','859','877','878','879','881','882','883','885','886','887','888','889'];
+  const prefixes = [
+    "811","812","813","814","815","816","817","818","819",
+    "821","822","823",
+    "851","852","853","855","856","857","858","859",
+    "877","878","879",
+    "881","882","883","885","886","887","888","889",
+  ];
   const pref = pick(prefixes);
-  let tail = '';
-  const len = randInt(7,9); // total digit setelah prefix 7-9
-  for (let i = 0; i < len; i++) tail += randInt(0,9);
+  let tail = "";
+  const len = randInt(7, 9);
+  for (let i = 0; i < len; i++) tail += randInt(0, 9);
   return `+62${pref}${tail}`;
 }
 
-// Plat Medan (BK)
-function generatePlate(existing) {
-  let plate;
+const SUFFIX = ["AA","AB","AC","AD","AE","AF","AG","AH","AK","AL","BA","BB","BC","BD","BE",
+"BF","BG","BH","BK","BL","CA","CB","CC","CD","CE"];
+
+function generatePlate(set) {
+  let p;
   do {
-    const number = String(randInt(1000, 9999));
-    const letters = faker.helpers.arrayElements('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), 2).join('');
-    plate = `BK ${number} ${letters}`;
-  } while (existing.has(plate));
-  existing.add(plate);
-  return plate;
+    p = `BK ${randInt(2000, 6000)} ${pick(SUFFIX)}`;
+  } while (set.has(p));
+  set.add(p);
+  return p;
 }
 
-// Motor populer di Indonesia
-const MOTOR_BRANDS = {
-  Honda: ['Beat','Vario 125','Vario 150','Scoopy','PCX','CB150R','Revo','Supra X 125'],
-  Yamaha: ['NMAX','Aerox','Mio','Fino','R15','Jupiter Z1','Vega'],
-  Suzuki: ['Satria F150','Address','Nex II','GSX R150'],
-  Kawasaki: ['W175','KLX 150'],
-  TVS: ['Neo XR','Rockz']
+const MOTOR = {
+  Honda: ["Beat","Vario 125","Vario 150","Scoopy","PCX","CB150R","Revo","Supra X 125"],
+  Yamaha: ["NMAX","Aerox","Mio","Fino","R15","Jupiter Z1","Vega"],
+  Suzuki: ["Satria F150","Address","Nex II","GSX R150"],
+  Kawasaki: ["W175","KLX 150"],
+  TVS: ["Neo XR","Rockz"]
 };
 
-// Parts (ringkas)
 const PART_CATEGORIES = [
-  { cat: 'Oli Mesin', variants: ['10W-30','10W-40','Matic'], min: 45000, max: 160000, weight: 10 },
-  { cat: 'Kampas Rem', variants: ['Depan','Belakang'], min: 30000, max: 110000, weight: 7 },
-  { cat: 'Busi', variants: ['Standard','Iridium'], min: 20000, max: 90000, weight: 6 },
-  { cat: 'Filter Udara', variants: ['Foam','Kertas'], min: 30000, max: 120000, weight: 3 },
-  { cat: 'Belt CVT', variants: ['Matic 110','Matic 125','Matic 150'], min: 120000, max: 450000, weight: 2 },
+  { cat: "Oli Mesin", variants: ["10W-30","10W-40","20W-50","Matic","Synthetic"], min: 50000, max: 160000 },
+  { cat: "Kampas Rem Depan", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000 },
+  { cat: "Kampas Rem Belakang", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000 },
+  { cat: "Busi", variants: ["CR7HSA","CPR8EA-9","Iridium","Standard"], min: 20000, max: 90000 },
+  { cat: "Filter Udara", variants: ["Foam","Kertas","Performance"], min: 30000, max: 130000 },
+  { cat: "Rantai", variants: ["420","428","520","O-Ring"], min: 80000, max: 350000 },
+  { cat: "Gir Depan", variants: ["12T","13T","14T","15T"], min: 25000, max: 90000 },
+  { cat: "Gir Belakang", variants: ["34T","36T","38T","40T"], min: 45000, max: 180000 },
+  { cat: "Ban Dalam", variants: ["70/90-17","80/90-17","90/90-14","Tubetype"], min: 25000, max: 80000 },
+  { cat: "Ban Luar", variants: ["70/90-17","80/90-17","90/90-14","Street"], min: 180000, max: 600000 },
 ];
-function weightedPick(categories) {
-  const total = categories.reduce((a, c) => a + (c.weight || 1), 0);
-  let r = Math.random() * total;
-  for (const c of categories) { r -= (c.weight || 1); if (r <= 0) return c; }
-  return categories[categories.length - 1];
+
+const EXPENSIVE = [
+  { name: "Blok Mesin Set Honda 150cc", min: 1200000, max: 2500000 },
+  { name: "Blok Mesin Set Yamaha 155cc", min: 1200000, max: 2500000 },
+  { name: "Blok Mesin Set Suzuki 150cc", min: 1100000, max: 2300000 },
+  { name: "Head Cylinder Assy 150cc", min: 900000, max: 2000000 },
+  { name: "Kit Overhaul CVT Matic 150cc", min: 800000, max: 1800000 }
+];
+
+const NOTES = [
+  "Keluhan: mesin terasa kurang bertenaga.",
+  "Keluhan: rem depan kurang pakem.",
+  "Keluhan: muncul suara berisik dari area CVT.",
+  "Keluhan: motor susah dinyalakan saat pagi.",
+  "Keluhan: tarikan berat saat di tanjakan.",
+  "Keluhan: getaran terasa pada kecepatan tinggi.",
+  "Keluhan: knalpot mengeluarkan asap putih.",
+  "Keluhan: mesin cepat panas.",
+  "Keluhan: indikator oli sering menyala.",
+  "Keluhan: ada suara tek-tek pada bagian mesin."
+];
+
+function serviceDate(i) {
+  const idx = Math.floor(i / ORDERS_PER_DAY);
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  d.setDate(d.getDate() - (DAYS - 1 - idx));
+  d.setMinutes(d.getMinutes() + randInt(0, 510));
+  return d;
 }
 
-// Tanggal servis tersebar: 6 order per hari (acak jamnya)
-function serviceDateForIndex(i) {
-  const dayIndex = Math.floor(i / ORDERS_PER_DAY); // 0..DAYS-1
-  const base = new Date();
-  base.setHours(9, 0, 0, 0);
-  base.setDate(base.getDate() - (DAYS - 1 - dayIndex));
-  // acak jam antara 09:00–17:30
-  const minutes = randInt(0, 510); // 8.5 jam
-  base.setMinutes(base.getMinutes() + minutes);
-  return base;
-}
-
+// ===========================================================
+//  MAIN
+// ===========================================================
 (async function main() {
   try {
-    console.log('Seed start...');
-
-    // Bersihkan data lama (aman re-run)
-    console.log('Clearing tables...');
+    console.log("🧹 Clearing existing tables...");
     await prisma.servicePart.deleteMany();
     await prisma.serviceItem.deleteMany();
     await prisma.serviceOrder.deleteMany();
@@ -99,148 +164,202 @@ function serviceDateForIndex(i) {
     await prisma.part.deleteMany();
     await prisma.mechanic.deleteMany();
     await prisma.user.deleteMany();
-    console.log('Tables cleared.');
 
-    // Mechanics (3 orang)
-    console.log('Seeding mechanics...');
-    const mechanicNames = ['Andi Saputra','Budi Santoso','Citra Lestari'];
+    // MECHANICS
     await prisma.mechanic.createMany({
-      data: mechanicNames.map(n => ({ name: n, active: true }))
+      data: [
+        { name: "Andi Saputra", active: true },
+        { name: "Budi Santoso", active: true },
+      ],
     });
+
     const mechanics = await prisma.mechanic.findMany();
 
-    // Parts
-    console.log('Seeding parts...');
-    const partRows = [];
-    for (let i = 0; i < N_PARTS; i++) {
-      const cat = weightedPick(PART_CATEGORIES);
-      const variant = pick(cat.variants);
-      partRows.push({
-        sku: `P-${10000 + i}`,
-        name: `${cat.cat} ${variant}`,
-        price: Math.round(Math.random() * (cat.max - cat.min) + cat.min)
+    // PARTS
+    let parts = [];
+    let sku = 10000;
+
+    for (const p of EXPENSIVE) {
+      parts.push({
+        sku: `P-${sku++}`,
+        name: p.name,
+        price: priceStep(p.min, p.max),
       });
     }
-    await prisma.part.createMany({ data: partRows });
-    const parts = await prisma.part.findMany();
 
-    // Customers (nama Indonesia + telepon +62)
-    console.log('Seeding customers...');
-    const customers = [];
-    for (let i = 0; i < N_CUSTOMERS; i++) {
-      const full = faker.person.fullName(); // Indonesia locale
-      customers.push({
-        name: full,
-        email: faker.internet.email({ firstName: full.split(' ')[0] }).toLowerCase(),
-        phone: phoneID()
-      });
-    }
-    for (const ch of chunkArray(customers, BATCH_SIZE)) {
-      await prisma.customer.createMany({ data: ch });
-      process.stdout.write('.');
-    }
-    console.log('\ncustomers done');
-
-    // Vehicles (hanya motor)
-    console.log('Seeding vehicles...');
-    const customersDB = await prisma.customer.findMany({ select: { id: true } });
-    const existingPlates = new Set();
-    const vehicles = [];
-    for (const c of customersDB) {
-      const n = Math.random() < 0.9 ? 1 : (Math.random() < 0.5 ? 2 : 1);
-      for (let k = 0; k < n; k++) {
-        const brand = pick(Object.keys(MOTOR_BRANDS));
-        const model = pick(MOTOR_BRANDS[brand]);
-        vehicles.push({
-          customerId: c.id,
-          plate: generatePlate(existingPlates),
-          brand,
-          model,
-          year: randInt(2010, 2024),
-          serviceIntervalDays: 180
+    for (const c of PART_CATEGORIES) {
+      for (const v of c.variants) {
+        parts.push({
+          sku: `P-${sku++}`,
+          name: `${c.cat} ${v}`,
+          price: priceStep(c.min, c.max),
         });
       }
     }
-    for (const ch of chunkArray(vehicles, BATCH_SIZE)) {
-      await prisma.vehicle.createMany({ data: ch });
-      process.stdout.write('.');
-    }
-    console.log('\nvehicles done');
-    const vehiclesDB = await prisma.vehicle.findMany({ select: { id: true } });
 
-    // Service Orders — 6 per hari
-    console.log('Seeding service orders (low concurrency)...');
-    const createOrder = async (i) => {
-      const v = pick(vehiclesDB);
+    parts = parts.slice(0, N_PARTS);
+    await prisma.part.createMany({ data: parts });
+    parts = await prisma.part.findMany();
+
+    const expensiveParts = parts.filter((p) =>
+      p.name.includes("Blok Mesin") ||
+      p.name.includes("Head Cylinder") ||
+      p.name.includes("Kit Overhaul")
+    );
+
+    // CUSTOMERS
+    let custRows = [];
+    for (let i = 0; i < N_CUSTOMERS; i++) {
+      const nm = randomIndoName();
+      custRows.push({
+        name: nm,
+        email: faker.internet.email({ firstName: nm.split(" ")[0] }).toLowerCase(),
+        phone: phoneID(),
+      });
+    }
+
+    for (const batch of chunk(custRows, BATCH_SIZE)) {
+      await prisma.customer.createMany({ data: batch });
+    }
+
+    const customers = await prisma.customer.findMany();
+
+    // VEHICLES
+    let plateSet = new Set();
+    let vehicles = [];
+
+    for (const c of customers) {
+      const n = Math.random() < 0.9 ? 1 : 2;
+      for (let i = 0; i < n; i++) {
+        const brand = pick(Object.keys(MOTOR));
+        vehicles.push({
+          customerId: c.id,
+          plate: generatePlate(plateSet),
+          brand,
+          model: pick(MOTOR[brand]),
+          year: randInt(2010, 2024),
+          serviceIntervalDays: 180,
+        });
+      }
+    }
+
+    for (const batch of chunk(vehicles, BATCH_SIZE)) {
+      await prisma.vehicle.createMany({ data: batch });
+    }
+
+    const vehicleList = await prisma.vehicle.findMany();
+
+    console.log("🛠️  Seeding service orders...");
+    for (let i = 0; i < N_SERVICE_ORDERS; i++) {
+      const v = pick(vehicleList);
       const mech = pick(mechanics);
+      const highCost = Math.random() < 0.05;
+
       const order = await prisma.serviceOrder.create({
         data: {
           vehicleId: v.id,
           mechanicId: mech.id,
-          date: serviceDateForIndex(i),
+          date: serviceDate(i),
           odometer: randInt(5000, 90000),
-          notes: Math.random() < 0.25 ? faker.lorem.sentence() : null
-        }
+          notes: Math.random() < 0.25 ? pick(NOTES) : null,
+        },
       });
 
-      // Jasa (1–2)
-      const nItems = randInt(1, 2);
-      await prisma.serviceItem.createMany({
-        data: Array.from({ length: nItems }).map(() => ({
+      let items = [];
+      let partsUsed = [];
+      let usedPart = new Set();
+
+      if (!highCost) {
+        items.push({
           serviceOrderId: order.id,
-          name: pick(['Ganti Oli','Tune Up','Ganti Kampas Rem','Service Rutin']),
-          price: randInt(20000, 250000)
-        }))
-      });
-
-      // Part (0–1) unik per order
-      if (Math.random() < 0.6) {
-        const cat = weightedPick(PART_CATEGORIES);
-        const cands = parts.filter(p => p.name.startsWith(cat.cat));
-        const part = pick(cands.length ? cands : parts);
-        await prisma.servicePart.create({
-          data: {
-            serviceOrderId: order.id,
-            partId: part.id,
-            qty: randInt(1, 2),
-            unitPrice: part.price
-          }
+          name: pick(["Service Rutin", "Ganti Oli", "Ganti Kampas Rem", "Tune Up"]),
+          price: priceStep(50000, 110000),
         });
-      }
-    };
 
-    const total = N_SERVICE_ORDERS;
-    const totalBatches = Math.ceil(total / ORDER_BATCH_SIZE);
-    let idx = 0;
-    for (let b = 0; b < totalBatches; b++) {
-      const jobs = [];
-      for (let j = 0; j < ORDER_BATCH_SIZE && idx < total; j++, idx++) {
-        jobs.push(createOrder(idx));
+        if (Math.random() < 0.4) {
+          items.push({
+            serviceOrderId: order.id,
+            name: pick(["Cek kelistrikan", "Setel rantai", "Bersihkan CVT"]),
+            price: priceStep(5000, 20000),
+          });
+        }
+
+        if (Math.random() < 0.6) {
+          const cat = pick(PART_CATEGORIES);
+          const candidates = parts.filter((p) => p.name.startsWith(cat.cat));
+          const pr = pick(candidates.length ? candidates : parts);
+
+          if (!usedPart.has(pr.id)) {
+            usedPart.add(pr.id);
+            partsUsed.push({
+              serviceOrderId: order.id,
+              partId: pr.id,
+              qty: 1,
+              unitPrice: priceStep(10000, 20000),
+            });
+          }
+        }
+      } else {
+        items.push({
+          serviceOrderId: order.id,
+          name: pick(["Overhaul Mesin", "Turun Mesin & Overhaul", "Perbaikan Berat Mesin"]),
+          price: priceStep(100000, 300000),
+        });
+
+        if (Math.random() < 0.7) {
+          items.push({
+            serviceOrderId: order.id,
+            name: pick(["Setel klep", "Ganti oli gardan", "Cek kelistrikan lengkap"]),
+            price: priceStep(50000, 150000),
+          });
+        }
+
+        const n = randInt(2, 4);
+        const highParts = expensiveParts.length ? expensiveParts : parts;
+
+        for (let x = 0; x < n; x++) {
+          let pr = pick(highParts);
+
+          if (usedPart.has(pr.id)) continue;
+          usedPart.add(pr.id);
+
+          partsUsed.push({
+            serviceOrderId: order.id,
+            partId: pr.id,
+            qty: 1,
+            unitPrice: priceStep(200000, 400000),
+          });
+        }
       }
-      await Promise.all(jobs);
-      process.stdout.write('.');
-      await sleep(BATCH_DELAY_MS);
+
+      if (items.length) await prisma.serviceItem.createMany({ data: items });
+      if (partsUsed.length) await prisma.servicePart.createMany({ data: partsUsed });
+
+      if (i % 200 === 0) process.stdout.write(".");
+      if (i % ORDER_BATCH_SIZE === 0) await sleep(BATCH_DELAY_MS);
     }
-    console.log('\nservice orders done');
 
-const bcrypt = require('bcryptjs');
+    // USERS
+    await prisma.user.createMany({
+      data: [
+        {
+          name: "Admin",
+          email: "admin@example.com",
+          password: bcrypt.hashSync("admin123", 10),
+          role: "ADMIN",
+        },
+        {
+          name: "Peneliti",
+          email: "peneliti@example.com",
+          password: bcrypt.hashSync("peneliti123", 10),
+          role: "PENELITI",
+        },
+      ],
+    });
 
-// ...
-console.log('Seeding users...');
-const adminHash    = bcrypt.hashSync('admin123', 10);
-const penelitiHash = bcrypt.hashSync('peneliti123', 10);
-
-await prisma.user.createMany({
-  data: [
-    { name: 'Admin',    email: 'admin@example.com',    password: adminHash,    role: 'ADMIN' },
-    { name: 'Peneliti', email: 'peneliti@example.com', password: penelitiHash, role: 'PENELITI' }
-  ]
-});
-
-
-    console.log('\n✅ SEED FINISHED SUCCESSFULLY');
+    console.log("\n✅ SEEDING COMPLETED SUCCESSFULLY!");
   } catch (e) {
-    console.error('❌ Error during seeding:', e);
+    console.error("❌ ERROR:", e);
     process.exit(1);
   } finally {
     await prisma.$disconnect();

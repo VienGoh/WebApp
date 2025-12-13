@@ -1,9 +1,10 @@
 "use client";
-import { useState, FormEvent } from "react";
+
+import { useState, FormEvent, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const qp = useSearchParams();
   const callbackUrl = qp.get("callbackUrl") ?? "/dashboard";
@@ -15,32 +16,78 @@ export default function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setErr(null); setLoading(true);
-    const res = await signIn("credentials", { redirect: false, email, password, callbackUrl });
+    setErr(null);
+    setLoading(true);
+
+    const res = await signIn("credentials", {
+      redirect: false,
+      email,
+      password,
+      callbackUrl,
+    });
+
     setLoading(false);
-    if (res?.error) setErr("Email atau password salah.");
-    else router.push(callbackUrl);
+
+    if (res?.error) {
+      setErr("Email atau password salah.");
+    } else {
+      router.push(callbackUrl);
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4"
+      >
         <h1 className="text-xl font-semibold">Masuk</h1>
+
         {err && <p className="text-sm text-red-600">{err}</p>}
+
         <label className="block">
           <span className="text-sm">Email</span>
-          <input className="mt-1 w-full rounded-xl border p-2" type="email" required
-                 value={email} onChange={(e)=>setEmail(e.target.value)} />
+          <input
+            className="mt-1 w-full rounded-xl border p-2"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </label>
+
         <label className="block">
           <span className="text-sm">Password</span>
-          <input className="mt-1 w-full rounded-xl border p-2" type="password" required
-                 value={password} onChange={(e)=>setPassword(e.target.value)} />
+          <input
+            className="mt-1 w-full rounded-xl border p-2"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </label>
-        <button className="w-full rounded-xl bg-slate-900 text-white py-2 disabled:opacity-60" disabled={loading}>
+
+        <button
+          className="w-full rounded-xl bg-slate-900 text-white py-2 disabled:opacity-60"
+          disabled={loading}
+        >
           {loading ? "Masuk..." : "Masuk"}
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <span>Memuat...</span>
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -3,26 +3,35 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
     "start": "next start",
     "lint": "next lint",
-    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "studio": "prisma studio",
-    "seed": "prisma db seed",
-    "reminders:run": "tsx scripts/run-reminders.ts"
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "tsx prisma/seed.ts",
+    "test:turso": "dotenv -e .env.turso -- tsx src/scripts/test-turso.ts",
+    "db:test": "tsx src/scripts/test-turso.ts",
+    "dev": "next dev",
+    "dev:turso": "dotenv -e .env.turso -- next dev",
+    "build": "prisma generate && next build",
+    "build:turso": "dotenv -e .env.turso -- prisma generate && next build",
+    "vercel-build": "prisma generate && next build"
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
-    "@prisma/client": "^6.18.0",
+    "@libsql/client": "^0.15.15",
+    "@prisma/adapter-libsql": "^6.19.1",
+    "@prisma/client": "^6.19.1",
     "bcryptjs": "^3.0.2",
     "dotenv": "^16.4.5",
     "ml-kmeans": "^6.0.0",
-    "next": "15.5.3",
-    "next-auth": "4.24",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "next": "^15.5.9",
+    "next-auth": "^4.24.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "zod": "^4.1.9"
   },
   "devDependencies": {
@@ -32,15 +41,16 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
+    "dotenv-cli": "^7.4.4",
     "eslint": "^9",
     "eslint-config-next": "15.5.3",
     "postcss": "^8.5.6",
-    "prisma": "^6.16.2",
+    "prisma": "^6.19.1",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.19.2",
     "typescript": "^5"
   },
   "prisma": {
-    "seed": "node prisma/seed.cjs"
+    "seed": "tsx prisma/seed.ts"
   }
 }
