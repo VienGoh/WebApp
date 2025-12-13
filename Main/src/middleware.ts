@@ -1,38 +1,20 @@
-// src/middleware.ts  (NextAuth v4)
+// src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const PROTECTED_PREFIXES = [
-  "/dashboard",
-  "/analytics",
-  "/customers",
-  "/items",
-  "/laporan",
-  "/mechanics",
-  "/parts",
-  "/reminders",
-  "/services",
-  "/vehicles",
-];
-
 export async function middleware(req: NextRequest) {
-  const { nextUrl } = req;
-
-  const isProtected = PROTECTED_PREFIXES.some((p) =>
-    nextUrl.pathname.startsWith(p)
-  );
-  if (!isProtected) return NextResponse.next();
-
-  // Cek session JWT dari NextAuth v4
   const token = await getToken({
     req,
-    secret: process.env.NEXTAUTH_SECRET, // pastikan ada di .env
+    secret: process.env.NEXTAUTH_SECRET,
   });
 
   if (!token) {
     const url = new URL("/login", req.url);
-    url.searchParams.set("callbackUrl", nextUrl.pathname + nextUrl.search);
+    url.searchParams.set(
+      "callbackUrl",
+      req.nextUrl.pathname + req.nextUrl.search
+    );
     return NextResponse.redirect(url);
   }
 

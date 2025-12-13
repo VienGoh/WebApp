@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner"; // Optional: untuk notifikasi yang lebih baik
 
 export type Opt = { id: number; label: string; price?: number };
 
@@ -31,7 +32,7 @@ export default function ServiceForm({
 }) {
   const router = useRouter();
 
-  // controlled state
+  // Form state
   const [vehicleId, setVehicleId] = useState<number | "">("");
   const [mechanicId, setMechanicId] = useState<number | "">("");
   const [mechanicName, setMechanicName] = useState("");
@@ -44,243 +45,538 @@ export default function ServiceForm({
   >([]);
 
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | undefined>();
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Initialize form with initial values
   useEffect(() => {
     if (!initialValues) {
-      setVehicleId("");
-      setMechanicId("");
-      setMechanicName("");
-      setDate("");
-      setOdometer("");
-      setNotes("");
-      setItems([]);
-      setUsedParts([]);
+      resetForm();
       return;
     }
+
+    const today = new Date().toISOString().split("T")[0];
+    
     setVehicleId(initialValues.vehicleId ?? "");
     setMechanicId(initialValues.mechanicId ?? "");
     setMechanicName("");
-    setDate(initialValues.date ?? "");
+    setDate(initialValues.date || today);
     setOdometer(initialValues.odometer != null ? String(initialValues.odometer) : "");
     setNotes(initialValues.notes ?? "");
-    setItems(initialValues.items ?? []);
-    setUsedParts(initialValues.parts ?? []);
+    setItems(initialValues.items?.map(item => ({
+      name: item.name || "",
+      price: item.price || 0
+    })) || []);
+    setUsedParts(initialValues.parts?.map(part => ({
+      partId: part.partId || 0,
+      qty: part.qty || 0,
+      unitPrice: part.unitPrice || 0
+    })) || []);
   }, [initialValues]);
 
-  const addItem = () => setItems((prev) => [...prev, { name: "", price: 0 }]);
-  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+  // Reset form function
+  const resetForm = useCallback(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setVehicleId("");
+    setMechanicId("");
+    setMechanicName("");
+    setDate(today);
+    setOdometer("");
+    setNotes("");
+    setItems([]);
+    setUsedParts([]);
+    setErrors({});
+  }, []);
 
+  // Item management
+  const addItem = () => setItems((prev) => [...prev, { name: "", price: 0 }]);
+  const updateItem = (index: number, field: keyof typeof items[0], value: string | number) => {
+    setItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+  const removeItem = (index: number) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Part management
   const addPart = () => {
-    const def = parts[0];
+    const defaultPart = parts[0];
     setUsedParts((prev) => [
       ...prev,
-      { partId: def?.id ?? 0, qty: 1, unitPrice: def?.price ?? 0 },
+      { 
+        partId: defaultPart?.id || 0, 
+        qty: 1, 
+        unitPrice: defaultPart?.price || 0 
+      },
     ]);
   };
-  const removePart = (idx: number) =>
-    setUsedParts((prev) => prev.filter((_, i) => i !== idx));
 
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setMsg(undefined);
-    setLoading(true);
+  const updatePart = (index: number, field: keyof typeof usedParts[0], value: number) => {
+    setUsedParts(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
 
-    const payload: any = {
-      vehicleId: vehicleId === "" ? undefined : Number(vehicleId),
-      mechanicId: mechanicId === "" ? undefined : Number(mechanicId),
-      mechanicName: mechanicName || undefined,
-      date: date || undefined,
-      odometer: odometer !== "" ? Number(odometer) : undefined,
-      notes: notes || undefined,
-      items: items.map((x) => ({ name: x.name, price: Number(x.price) || 0 })),
-      parts: usedParts.map((p) => ({
-        partId: Number(p.partId),
-        qty: Number(p.qty) || 0,
-        unitPrice: Number(p.unitPrice) || 0,
-      })),
-    };
+  const removePart = (index: number) => {
+    setUsedParts(prev => prev.filter((_, i) => i !== index));
+  };
 
-    const url = mode === "edit" ? `/api/services/${serviceId}` : "/api/services";
-    const method = mode === "edit" ? "PATCH" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  // Validation
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!vehicleId) {
+      newErrors.vehicleId = "Pilih kendaraan";
+    }
+
+    // Validate items
+    items.forEach((item, index) => {
+      if (!item.name.trim()) {
+        newErrors[`itemName_${index}`] = "Nama pekerjaan diperlukan";
+      }
+      if (item.price < 0) {
+        newErrors[`itemPrice_${index}`] = "Harga tidak valid";
+      }
     });
 
-    setLoading(false);
-    if (!res.ok) {
-      setMsg("Gagal menyimpan");
+    // Validate parts
+    usedParts.forEach((part, index) => {
+      if (!part.partId) {
+        newErrors[`part_${index}`] = "Pilih sparepart";
+      }
+      if (part.qty <= 0) {
+        newErrors[`partQty_${index}`] = "Jumlah harus lebih dari 0";
+      }
+      if (part.unitPrice < 0) {
+        newErrors[`partPrice_${index}`] = "Harga tidak valid";
+      }
+    });
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Calculate totals for display
+  const calculateTotal = () => {
+    const itemsTotal = items.reduce((sum, item) => sum + (item.price || 0), 0);
+    const partsTotal = usedParts.reduce((sum, part) => sum + (part.qty * part.unitPrice), 0);
+    return itemsTotal + partsTotal;
+  };
+
+  // Submit handler
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      // Optional: Scroll to first error
+      const firstError = document.querySelector('[data-error="true"]');
+      firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
-    // Redirect pasti kembali ke list
-    router.replace("/services?saved=1");
+    setLoading(true);
+    setErrors({});
+
+    const payload = {
+      vehicleId: Number(vehicleId),
+      mechanicId: mechanicId ? Number(mechanicId) : undefined,
+      mechanicName: mechanicName.trim() || undefined,
+      date: date || new Date().toISOString().split('T')[0],
+      odometer: odometer ? Number(odometer) : undefined,
+      notes: notes.trim() || undefined,
+      items: items
+        .filter(item => item.name.trim() && item.price >= 0)
+        .map(item => ({
+          name: item.name.trim(),
+          price: Number(item.price) || 0,
+        })),
+      parts: usedParts
+        .filter(part => part.partId && part.qty > 0 && part.unitPrice >= 0)
+        .map(part => ({
+          partId: Number(part.partId),
+          qty: Number(part.qty) || 1,
+          unitPrice: Number(part.unitPrice) || 0,
+        })),
+    };
+
+    try {
+      const url = mode === "edit" && serviceId 
+        ? `/api/services/${serviceId}` 
+        : "/api/services";
+      
+      const method = mode === "edit" ? "PATCH" : "POST";
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Gagal menyimpan");
+      }
+
+      // Success
+      toast.success(mode === "edit" ? "Perubahan disimpan!" : "Servis berhasil disimpan!");
+      
+      // Redirect dengan delay kecil untuk UX
+      setTimeout(() => {
+        router.push("/services?saved=1");
+        router.refresh();
+      }, 1000);
+
+    } catch (error: any) {
+      console.error("Submit error:", error);
+      
+      // Show error message
+      toast.error(error.message || "Terjadi kesalahan");
+      
+      // Set form error
+      setErrors({ form: error.message || "Gagal menyimpan data" });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="grid gap-1.5">
-          <label className="text-sm text-slate-600">Kendaraan</label>
-          <select
-            name="vehicleId"
-            required
-            className="border border-slate-200"
-            value={vehicleId}
-            onChange={(e) => setVehicleId(e.target.value ? Number(e.target.value) : "")}
-          >
-            <option value="">-- Pilih --</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
+    <div className="space-y-6">
+      {/* Total Preview */}
+      <div className="rounded-lg bg-blue-50 p-4">
+        <div className="flex justify-between items-center">
+          <span className="font-medium text-blue-800">Total Estimasi:</span>
+          <span className="text-xl font-bold text-blue-900">
+            Rp {calculateTotal().toLocaleString("id-ID")}
+          </span>
         </div>
+      </div>
 
-        <div className="grid gap-1.5">
-          <label className="text-sm text-slate-600">Mekanik (opsional)</label>
-          <div className="grid gap-2 md:grid-cols-2">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Error Message */}
+        {errors.form && (
+          <div className="rounded-lg bg-red-50 p-4 border border-red-200">
+            <p className="text-red-700 text-sm">{errors.form}</p>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Vehicle Selection */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Kendaraan <span className="text-red-500">*</span>
+            </label>
             <select
-              name="mechanicId"
-              className="border border-slate-200"
-              value={mechanicId}
-              onChange={(e) => setMechanicId(e.target.value ? Number(e.target.value) : "")}
+              required
+              className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors.vehicleId ? 'border-red-500' : 'border-gray-300'}`}
+              value={vehicleId}
+              onChange={(e) => {
+                setVehicleId(e.target.value ? Number(e.target.value) : "");
+                if (errors.vehicleId) setErrors(prev => ({ ...prev, vehicleId: "" }));
+              }}
+              data-error={!!errors.vehicleId}
             >
-              <option value="">-- Pilih --</option>
-              {mechanics.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+              <option value="">-- Pilih Kendaraan --</option>
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
               ))}
             </select>
-            <input
-              name="mechanicName"
-              placeholder="atau ketik nama baru"
-              className="border border-slate-200"
-              value={mechanicName}
-              onChange={(e) => setMechanicName(e.target.value)}
-            />
+            {errors.vehicleId && (
+              <p className="text-sm text-red-600">{errors.vehicleId}</p>
+            )}
           </div>
-        </div>
-      </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="grid gap-1.5">
-          <label className="text-sm text-slate-600">Tanggal</label>
-          <input
-            type="date"
-            name="date"
-            className="border border-slate-200"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <label className="text-sm text-slate-600">Odometer</label>
-          <input
-            type="number"
-            name="odometer"
-            className="border border-slate-200"
-            value={odometer}
-            onChange={(e) => setOdometer(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <label className="text-sm text-slate-600">Catatan</label>
-          <input
-            name="notes"
-            className="border border-slate-200"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-medium">Pekerjaan</h3>
-          <button type="button" onClick={addItem} className="rounded-md border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-blue-50">+ Tambah</button>
-        </div>
-        <div className="grid gap-2">
-          {items.map((it, idx) => (
-            <div key={idx} className="grid gap-2 md:grid-cols-2">
-              <input
-                placeholder="Nama pekerjaan"
-                className="border border-slate-200"
-                value={it.name}
-                onChange={(e) => { const x=[...items]; x[idx].name=e.target.value; setItems(x); }}
-              />
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Harga"
-                  className="border border-slate-200"
-                  value={it.price}
-                  onChange={(e) => { const x=[...items]; x[idx].price=Number(e.target.value); setItems(x); }}
-                />
-                <button type="button" onClick={() => removeItem(idx)} className="rounded-md border px-2 text-sm hover:bg-red-50">Hapus</button>
-              </div>
-            </div>
-          ))}
-          {!items.length && <p className="text-sm text-slate-500">Belum ada pekerjaan.</p>}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-medium">Sparepart</h3>
-          <button type="button" onClick={addPart} className="rounded-md border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-blue-50">+ Tambah</button>
-        </div>
-        <div className="grid gap-2">
-          {usedParts.map((p, idx) => (
-            <div key={idx} className="grid gap-2 md:grid-cols-3">
+          {/* Mechanic Selection */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Mekanik
+            </label>
+            <div className="grid gap-2 md:grid-cols-2">
               <select
-                className="border border-slate-200"
-                value={p.partId}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  const master = parts.find((x) => x.id === id);
-                  const x = [...usedParts];
-                  x[idx].partId = id;
-                  if (master?.price != null) x[idx].unitPrice = master.price!;
-                  setUsedParts(x);
-                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500"
+                value={mechanicId}
+                onChange={(e) => setMechanicId(e.target.value ? Number(e.target.value) : "")}
               >
-                {parts.map((part) => (
-                  <option key={part.id} value={part.id}>{part.label}</option>
+                <option value="">-- Pilih Mekanik --</option>
+                {mechanics.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
                 ))}
               </select>
               <input
-                type="number"
-                min={1}
-                className="border border-slate-200"
-                value={p.qty}
-                onChange={(e) => { const x=[...usedParts]; x[idx].qty=Number(e.target.value); setUsedParts(x); }}
+                type="text"
+                placeholder="Nama mekanik baru"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500"
+                value={mechanicName}
+                onChange={(e) => setMechanicName(e.target.value)}
               />
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  className="border border-slate-200"
-                  value={p.unitPrice}
-                  onChange={(e) => { const x=[...usedParts]; x[idx].unitPrice=Number(e.target.value); setUsedParts(x); }}
-                />
-                <button type="button" onClick={() => removePart(idx)} className="rounded-md border px-2 text-sm hover:bg-red-50">Hapus</button>
-              </div>
             </div>
-          ))}
-          {!usedParts.length && <p className="text-sm text-slate-500">Belum ada sparepart.</p>}
+            <p className="text-xs text-gray-500">Pilih dari daftar atau ketik nama baru</p>
+          </div>
         </div>
-      </div>
 
-      {msg && <p className="text-sm text-slate-600">{msg}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded-md border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-blue-50 hover:border-blue-300 transition disabled:opacity-60"
-      >
-        {loading ? "Menyimpan…" : mode === "edit" ? "Simpan Perubahan" : "Simpan Servis"}
-      </button>
-    </form>
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Date */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Tanggal Servis
+            </label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Odometer */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Odometer (km)
+            </label>
+            <input
+              type="number"
+              min="0"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500"
+              value={odometer}
+              onChange={(e) => setOdometer(e.target.value)}
+              placeholder="Contoh: 15000"
+            />
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Catatan Tambahan
+            </label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Catatan khusus..."
+            />
+          </div>
+        </div>
+
+        {/* Services Section */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Pekerjaan</h3>
+              <p className="text-sm text-gray-500">Daftar pekerjaan yang dilakukan</p>
+            </div>
+            <button
+              type="button"
+              onClick={addItem}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              + Tambah Pekerjaan
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {items.map((item, index) => (
+              <div key={index} className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Nama pekerjaan"
+                    className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors[`itemName_${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                    value={item.name}
+                    onChange={(e) => updateItem(index, 'name', e.target.value)}
+                    data-error={!!errors[`itemName_${index}`]}
+                  />
+                  {errors[`itemName_${index}`] && (
+                    <p className="mt-1 text-sm text-red-600">{errors[`itemName_${index}`]}</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Harga"
+                      className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors[`itemPrice_${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                      value={item.price}
+                      onChange={(e) => updateItem(index, 'price', Number(e.target.value))}
+                      data-error={!!errors[`itemPrice_${index}`]}
+                    />
+                    {errors[`itemPrice_${index}`] && (
+                      <p className="mt-1 text-sm text-red-600">{errors[`itemPrice_${index}`]}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+            
+            {items.length === 0 && (
+              <div className="rounded-lg bg-gray-50 p-4 text-center">
+                <p className="text-gray-500">Belum ada pekerjaan. Tambahkan pekerjaan pertama.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Parts Section */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Sparepart</h3>
+              <p className="text-sm text-gray-500">Daftar sparepart yang digunakan</p>
+            </div>
+            <button
+              type="button"
+              onClick={addPart}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              + Tambah Sparepart
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {usedParts.map((part, index) => {
+              const selectedPart = parts.find(p => p.id === part.partId);
+              const subtotal = part.qty * part.unitPrice;
+              
+              return (
+                <div key={index} className="grid gap-3 md:grid-cols-4">
+                  <div>
+                    <select
+                      className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors[`part_${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                      value={part.partId}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        const master = parts.find(p => p.id === id);
+                        updatePart(index, 'partId', id);
+                        if (master?.price != null) {
+                          updatePart(index, 'unitPrice', master.price);
+                        }
+                        if (errors[`part_${index}`]) {
+                          setErrors(prev => ({ ...prev, [`part_${index}`]: "" }));
+                        }
+                      }}
+                      data-error={!!errors[`part_${index}`]}
+                    >
+                      <option value={0}>-- Pilih Sparepart --</option>
+                      {parts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label} {p.price ? `(Rp ${p.price.toLocaleString()})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {errors[`part_${index}`] && (
+                      <p className="mt-1 text-sm text-red-600">{errors[`part_${index}`]}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="number"
+                      min="1"
+                      className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors[`partQty_${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                      value={part.qty}
+                      onChange={(e) => updatePart(index, 'qty', Number(e.target.value))}
+                      data-error={!!errors[`partQty_${index}`]}
+                    />
+                    {errors[`partQty_${index}`] && (
+                      <p className="mt-1 text-sm text-red-600">{errors[`partQty_${index}`]}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={`w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${errors[`partPrice_${index}`] ? 'border-red-500' : 'border-gray-300'}`}
+                      value={part.unitPrice}
+                      onChange={(e) => updatePart(index, 'unitPrice', Number(e.target.value))}
+                      data-error={!!errors[`partPrice_${index}`]}
+                    />
+                    {errors[`partPrice_${index}`] && (
+                      <p className="mt-1 text-sm text-red-600">{errors[`partPrice_${index}`]}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 text-right">
+                      <p className="text-sm font-medium text-gray-700">
+                        Rp {subtotal.toLocaleString("id-ID")}
+                      </p>
+                      <p className="text-xs text-gray-500">Subtotal</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePart(index)}
+                      className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            
+            {usedParts.length === 0 && (
+              <div className="rounded-lg bg-gray-50 p-4 text-center">
+                <p className="text-gray-500">Belum ada sparepart. Tambahkan sparepart pertama.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <div className="flex gap-3 pt-4">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-lg border border-gray-300 bg-white px-6 py-3 font-medium text-gray-700 hover:bg-gray-50"
+            disabled={loading}
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !vehicleId}
+            className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Menyimpan...
+              </span>
+            ) : mode === "edit" ? (
+              "Simpan Perubahan"
+            ) : (
+              "Simpan Servis"
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }

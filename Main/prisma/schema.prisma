@@ -2,14 +2,13 @@
 // Datasource & Generator
 // ==============================
 
-// HAPUS yang lama, ganti dengan:
-generator client {
-  provider = "prisma-client-js"
+datasource db {
+provider = "postgresql"
+url      = env("DATABASE_URL")   // ini nanti "file:./dev.db" di .env
 }
 
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")  // bisa file: atau libsql:
+generator client {
+  provider = "prisma-client-js"
 }
 
 // ==============================
@@ -49,9 +48,10 @@ model Vehicle {
 
   customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   services ServiceOrder[]
-  clusterAssignments ClusterAssignment[]
+  // opsional: relasi balik ke assignment cluster
+  clusterAssignments ClusterAssignment[]  // ← memudahkan include
 
-  // Cache untuk performance
+  // opsional: cache label cluster paling baru, jika mau dipakai di UI / reminder cepat
   cachedClusterIdx   Int?
   clusterUpdatedAt   DateTime?
 
@@ -167,7 +167,7 @@ model ClusterCentroid {
 
   run    ClusterRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  @@unique([runId, idx])
+  @@unique([runId, idx])  // ← tiap run, 1 centroid per idx
   @@index([idx])
 }
 
@@ -180,7 +180,7 @@ model ClusterAssignment {
   run       ClusterRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
-  @@unique([runId, vehicleId])
+  @@unique([runId, vehicleId]) // ← 1 kendaraan dapat 1 label per run
   @@index([runId])
   @@index([vehicleId])
   @@index([idx])

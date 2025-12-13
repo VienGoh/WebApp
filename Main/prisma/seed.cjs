@@ -1,43 +1,21 @@
-﻿// ===========================================================
-//  SEED.CJS – FULL VERSION (TURSO REMOTE DATABASE)
-// ===========================================================
-
-// Load .env
-require("dotenv").config();
-
-// Turso + Prisma adapter
+﻿// prisma/seed.cjs
 const { PrismaClient } = require("@prisma/client");
-const { PrismaLibSql } = require("@prisma/adapter-libsql");
-const { createClient } = require("@libsql/client");
-
-console.log("⚙️  Using Turso (remote libsql) for seeding...");
-
-// create libsql client (Turso)
-const turso = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-// connect Prisma to Turso
-const adapter = new PrismaLibSql(turso);
-const prisma = new PrismaClient({ adapter });
-
-// Faker + bcrypt
 const { fakerID_ID: faker } = require("@faker-js/faker");
 const bcrypt = require("bcryptjs");
 
-// ===========================================================
-//  CONFIG
-// ===========================================================
+const prisma = new PrismaClient();
+
+// =================== CONFIG ===================
 const N_MECHANICS = 3;
-const DAYS = 892;
-const ORDERS_PER_DAY = 4;
+const DAYS = 892;                             
+const ORDERS_PER_DAY = 4;                     
 const N_SERVICE_ORDERS = DAYS * ORDERS_PER_DAY;
 const N_CUSTOMERS = 700;
 const N_PARTS = 40;
 const BATCH_SIZE = 200;
 const ORDER_BATCH_SIZE = 30;
 const BATCH_DELAY_MS = 120;
+// ==============================================
 
 // Helpers
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -45,26 +23,29 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function chunk(arr, size) {
-  let out = [];
+  const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
+// Harga kelipatan 500
 function priceStep(min, max, step = 500) {
   const nMin = Math.ceil(min / step);
   const nMax = Math.floor(max / step);
   return randInt(nMin, nMax) * step;
 }
 
-// ===========================================================
-//  GENERAL DATA LISTS
-// ===========================================================
-const FIRST = ["Andi","Budi","Citra","Dewi","Eka","Fajar","Gilang","Hendra","Indah","Joko",
-  "Kurnia","Lestari","Mira","Nanda","Oki","Putri","Rizki","Sari","Taufik","Wulan"];
+// ===== Nama Indonesia 1–2 kata =====
+const FIRST = [
+  "Andi","Budi","Citra","Dewi","Eka","Fajar","Gilang","Hendra","Indah","Joko",
+  "Kurnia","Lestari","Mira","Nanda","Oki","Putri","Rizki","Sari","Taufik","Wulan",
+];
 
-const LAST = ["Saputra","Santoso","Pratama","Wijaya","Hutapea","Siregar","Simanjuntak",
-  "Sinaga","Nasution","Halim","Gunawan","Mahendra","Permata","Ramadhan","Maulana",
-  "Kusuma","Syahputra","Hidayat","Panjaitan","Tanjung"];
+const LAST = [
+  "Saputra","Santoso","Pratama","Wijaya","Hutapea","Siregar","Simanjuntak",
+  "Sinaga","Nasution","Halim","Gunawan","Mahendra","Permata","Ramadhan",
+  "Maulana","Kusuma","Syahputra","Hidayat","Panjaitan","Tanjung",
+];
 
 function randomIndoName() {
   const f = pick(FIRST);
@@ -72,6 +53,7 @@ function randomIndoName() {
   return Math.random() < 0.2 ? f : `${f} ${l}`;
 }
 
+// ===== Telepon +62 valid =====
 function phoneID() {
   const prefixes = [
     "811","812","813","814","815","816","817","818","819",
@@ -87,18 +69,21 @@ function phoneID() {
   return `+62${pref}${tail}`;
 }
 
-const SUFFIX = ["AA","AB","AC","AD","AE","AF","AG","AH","AK","AL","BA","BB","BC","BD","BE",
-"BF","BG","BH","BK","BL","CA","CB","CC","CD","CE"];
+// ===== Plat BK =====
+const SUFFIXES = ["AA","AB","AC","AD","AE","AF","AG","AH","AK","AL",
+                  "BA","BB","BC","BD","BE","BF","BG","BH","BK","BL",
+                  "CA","CB","CC","CD","CE"];
 
 function generatePlate(set) {
   let p;
   do {
-    p = `BK ${randInt(2000, 6000)} ${pick(SUFFIX)}`;
+    p = `BK ${randInt(2000, 6000)} ${pick(SUFFIXES)}`;
   } while (set.has(p));
   set.add(p);
   return p;
 }
 
+// ===== Motor =====
 const MOTOR = {
   Honda: ["Beat","Vario 125","Vario 150","Scoopy","PCX","CB150R","Revo","Supra X 125"],
   Yamaha: ["NMAX","Aerox","Mio","Fino","R15","Jupiter Z1","Vega"],
@@ -107,19 +92,31 @@ const MOTOR = {
   TVS: ["Neo XR","Rockz"]
 };
 
+// ===== Sparepart kategori (normal) =====
 const PART_CATEGORIES = [
-  { cat: "Oli Mesin", variants: ["10W-30","10W-40","20W-50","Matic","Synthetic"], min: 50000, max: 160000 },
-  { cat: "Kampas Rem Depan", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000 },
-  { cat: "Kampas Rem Belakang", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000 },
-  { cat: "Busi", variants: ["CR7HSA","CPR8EA-9","Iridium","Standard"], min: 20000, max: 90000 },
-  { cat: "Filter Udara", variants: ["Foam","Kertas","Performance"], min: 30000, max: 130000 },
-  { cat: "Rantai", variants: ["420","428","520","O-Ring"], min: 80000, max: 350000 },
-  { cat: "Gir Depan", variants: ["12T","13T","14T","15T"], min: 25000, max: 90000 },
-  { cat: "Gir Belakang", variants: ["34T","36T","38T","40T"], min: 45000, max: 180000 },
-  { cat: "Ban Dalam", variants: ["70/90-17","80/90-17","90/90-14","Tubetype"], min: 25000, max: 80000 },
-  { cat: "Ban Luar", variants: ["70/90-17","80/90-17","90/90-14","Street"], min: 180000, max: 600000 },
+  { cat: "Oli Mesin", variants: ["10W-30","10W-40","20W-50","Matic","Synthetic"], min: 50000, max: 160000, weight: 10 },
+  { cat: "Kampas Rem Depan", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000, weight: 7 },
+  { cat: "Kampas Rem Belakang", variants: ["Honda","Yamaha","Suzuki","Kawasaki"], min: 35000, max: 120000, weight: 7 },
+  { cat: "Busi", variants: ["CR7HSA","CPR8EA-9","Iridium","Standard"], min: 20000, max: 90000, weight: 6 },
+  { cat: "Filter Udara", variants: ["Foam","Kertas","Performance"], min: 30000, max: 130000, weight: 4 },
+  { cat: "Rantai", variants: ["420","428","520","O-Ring"], min: 80000, max: 350000, weight: 3 },
+  { cat: "Gir Depan", variants: ["12T","13T","14T","15T"], min: 25000, max: 90000, weight: 3 },
+  { cat: "Gir Belakang", variants: ["34T","36T","38T","40T"], min: 45000, max: 180000, weight: 3 },
+  { cat: "Ban Dalam", variants: ["70/90-17","80/90-17","90/90-14","Tubetype"], min: 25000, max: 80000, weight: 3 },
+  { cat: "Ban Luar", variants: ["70/90-17","80/90-17","90/90-14","Street"], min: 180000, max: 600000, weight: 2 },
 ];
 
+function weightedPick(list) {
+  const sum = list.reduce((a, c) => a + (c.weight || 1), 0);
+  let r = Math.random() * sum;
+  for (const c of list) {
+    r -= (c.weight || 1);
+    if (r <= 0) return c;
+  }
+  return list[list.length - 1];
+}
+
+// ===== Sparepart mahal =====
 const EXPENSIVE = [
   { name: "Blok Mesin Set Honda 150cc", min: 1200000, max: 2500000 },
   { name: "Blok Mesin Set Yamaha 155cc", min: 1200000, max: 2500000 },
@@ -127,7 +124,6 @@ const EXPENSIVE = [
   { name: "Head Cylinder Assy 150cc", min: 900000, max: 2000000 },
   { name: "Kit Overhaul CVT Matic 150cc", min: 800000, max: 1800000 }
 ];
-
 const NOTES = [
   "Keluhan: mesin terasa kurang bertenaga.",
   "Keluhan: rem depan kurang pakem.",
@@ -141,6 +137,8 @@ const NOTES = [
   "Keluhan: ada suara tek-tek pada bagian mesin."
 ];
 
+
+// ===== Tanggal Servis =====
 function serviceDate(i) {
   const idx = Math.floor(i / ORDERS_PER_DAY);
   const d = new Date();
@@ -150,12 +148,12 @@ function serviceDate(i) {
   return d;
 }
 
-// ===========================================================
-//  MAIN
-// ===========================================================
+// ===============================================================
+//                        MAIN SEEDER
+// ===============================================================
 (async function main() {
   try {
-    console.log("🧹 Clearing existing tables...");
+    console.log("Clearing...");
     await prisma.servicePart.deleteMany();
     await prisma.serviceItem.deleteMany();
     await prisma.serviceOrder.deleteMany();
@@ -165,7 +163,7 @@ function serviceDate(i) {
     await prisma.mechanic.deleteMany();
     await prisma.user.deleteMany();
 
-    // MECHANICS
+    // ===== Mechanics =====
     await prisma.mechanic.createMany({
       data: [
         { name: "Andi Saputra", active: true },
@@ -175,10 +173,11 @@ function serviceDate(i) {
 
     const mechanics = await prisma.mechanic.findMany();
 
-    // PARTS
+    // ===== Sparepart =====
     let parts = [];
     let sku = 10000;
 
+    // Part mahal dulu
     for (const p of EXPENSIVE) {
       parts.push({
         sku: `P-${sku++}`,
@@ -187,6 +186,7 @@ function serviceDate(i) {
       });
     }
 
+    // Part normal
     for (const c of PART_CATEGORIES) {
       for (const v of c.variants) {
         parts.push({
@@ -201,36 +201,37 @@ function serviceDate(i) {
     await prisma.part.createMany({ data: parts });
     parts = await prisma.part.findMany();
 
-    const expensiveParts = parts.filter((p) =>
-      p.name.includes("Blok Mesin") ||
-      p.name.includes("Head Cylinder") ||
-      p.name.includes("Kit Overhaul")
+    const expensiveParts = parts.filter(
+      (p) =>
+        p.name.includes("Blok Mesin") ||
+        p.name.includes("Head Cylinder") ||
+        p.name.includes("Kit Overhaul")
     );
 
-    // CUSTOMERS
-    let custRows = [];
+    // ===== Customers =====
+    const customers = [];
     for (let i = 0; i < N_CUSTOMERS; i++) {
       const nm = randomIndoName();
-      custRows.push({
+      customers.push({
         name: nm,
         email: faker.internet.email({ firstName: nm.split(" ")[0] }).toLowerCase(),
         phone: phoneID(),
       });
     }
 
-    for (const batch of chunk(custRows, BATCH_SIZE)) {
-      await prisma.customer.createMany({ data: batch });
+    for (const c of chunk(customers, BATCH_SIZE)) {
+      await prisma.customer.createMany({ data: c });
     }
 
-    const customers = await prisma.customer.findMany();
+    const customersDB = await prisma.customer.findMany({ select: { id: true } });
 
-    // VEHICLES
-    let plateSet = new Set();
-    let vehicles = [];
+    // ===== Vehicles =====
+    const plateSet = new Set();
+    const vehicles = [];
 
-    for (const c of customers) {
-      const n = Math.random() < 0.9 ? 1 : 2;
-      for (let i = 0; i < n; i++) {
+    for (const c of customersDB) {
+      const count = Math.random() < 0.9 ? 1 : 2;
+      for (let k = 0; k < count; k++) {
         const brand = pick(Object.keys(MOTOR));
         vehicles.push({
           customerId: c.id,
@@ -243,17 +244,21 @@ function serviceDate(i) {
       }
     }
 
-    for (const batch of chunk(vehicles, BATCH_SIZE)) {
-      await prisma.vehicle.createMany({ data: batch });
+    for (const v of chunk(vehicles, BATCH_SIZE)) {
+      await prisma.vehicle.createMany({ data: v });
     }
 
-    const vehicleList = await prisma.vehicle.findMany();
+    const vehiclesDB = await prisma.vehicle.findMany();
 
-    console.log("🛠️  Seeding service orders...");
+    // ==========================================================
+    //                  SERVICE ORDERS (fix duplicate)
+    // ==========================================================
+    console.log("Seeding service orders...");
+
     for (let i = 0; i < N_SERVICE_ORDERS; i++) {
-      const v = pick(vehicleList);
+      const v = pick(vehiclesDB);
       const mech = pick(mechanics);
-      const highCost = Math.random() < 0.05;
+      const isHigh = Math.random() < 0.05;
 
       const order = await prisma.serviceOrder.create({
         data: {
@@ -267,9 +272,10 @@ function serviceDate(i) {
 
       let items = [];
       let partsUsed = [];
-      let usedPart = new Set();
+      let usedPartIds = new Set();
 
-      if (!highCost) {
+      if (!isHigh) {
+        // NORMAL ORDER 50k–150k
         items.push({
           serviceOrderId: order.id,
           name: pick(["Service Rutin", "Ganti Oli", "Ganti Kampas Rem", "Tune Up"]),
@@ -285,12 +291,12 @@ function serviceDate(i) {
         }
 
         if (Math.random() < 0.6) {
-          const cat = pick(PART_CATEGORIES);
-          const candidates = parts.filter((p) => p.name.startsWith(cat.cat));
-          const pr = pick(candidates.length ? candidates : parts);
+          const cat = weightedPick(PART_CATEGORIES);
+          const cand = parts.filter((p) => p.name.startsWith(cat.cat));
+          const pr = pick(cand.length ? cand : parts);
 
-          if (!usedPart.has(pr.id)) {
-            usedPart.add(pr.id);
+          if (!usedPartIds.has(pr.id)) {
+            usedPartIds.add(pr.id);
             partsUsed.push({
               serviceOrderId: order.id,
               partId: pr.id,
@@ -300,6 +306,7 @@ function serviceDate(i) {
           }
         }
       } else {
+        // HIGH COST 500k–2M
         items.push({
           serviceOrderId: order.id,
           name: pick(["Overhaul Mesin", "Turun Mesin & Overhaul", "Perbaikan Berat Mesin"]),
@@ -315,14 +322,21 @@ function serviceDate(i) {
         }
 
         const n = randInt(2, 4);
-        const highParts = expensiveParts.length ? expensiveParts : parts;
+        const highList = expensiveParts.length ? expensiveParts : parts;
 
         for (let x = 0; x < n; x++) {
-          let pr = pick(highParts);
+          let pr;
+          let tries = 0;
 
-          if (usedPart.has(pr.id)) continue;
-          usedPart.add(pr.id);
+          // cari part unik
+          do {
+            pr = pick(highList);
+            tries++;
+          } while (usedPartIds.has(pr.id) && tries < 10);
 
+          if (usedPartIds.has(pr.id)) break;
+
+          usedPartIds.add(pr.id);
           partsUsed.push({
             serviceOrderId: order.id,
             partId: pr.id,
@@ -339,25 +353,15 @@ function serviceDate(i) {
       if (i % ORDER_BATCH_SIZE === 0) await sleep(BATCH_DELAY_MS);
     }
 
-    // USERS
+    // ===== Users =====
     await prisma.user.createMany({
       data: [
-        {
-          name: "Admin",
-          email: "admin@example.com",
-          password: bcrypt.hashSync("admin123", 10),
-          role: "ADMIN",
-        },
-        {
-          name: "Peneliti",
-          email: "peneliti@example.com",
-          password: bcrypt.hashSync("peneliti123", 10),
-          role: "PENELITI",
-        },
+        { name: "Admin", email: "admin@example.com", password: bcrypt.hashSync("admin123", 10), role: "ADMIN" },
+        { name: "Peneliti", email: "peneliti@example.com", password: bcrypt.hashSync("peneliti123", 10), role: "PENELITI" },
       ],
     });
 
-    console.log("\n✅ SEEDING COMPLETED SUCCESSFULLY!");
+    console.log("\nSEEDING COMPLETED SUCCESSFULLY!");
   } catch (e) {
     console.error("❌ ERROR:", e);
     process.exit(1);

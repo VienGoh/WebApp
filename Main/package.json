@@ -1,8 +1,10 @@
 {
-  "name": "next-sqlite-starter",
-  "version": "0.1.0",
+  "name": "bengkel-app",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
@@ -11,46 +13,34 @@
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "db:seed": "tsx prisma/seed.ts",
-    "test:turso": "dotenv -e .env.turso -- tsx src/scripts/test-turso.ts",
-    "db:test": "tsx src/scripts/test-turso.ts",
-    "dev": "next dev",
+    "db:seed": "node prisma/seed.cjs",
+    "db:test": "node src/scripts/test-db.js",
     "dev:turso": "dotenv -e .env.turso -- next dev",
-    "build": "prisma generate && next build",
-    "build:turso": "dotenv -e .env.turso -- prisma generate && next build",
-    "vercel-build": "prisma generate && next build"
+    "build:turso": "dotenv -e .env.turso -- prisma generate && next build"
   },
   "dependencies": {
-    "@faker-js/faker": "^10.1.0",
-    "@libsql/client": "^0.15.15",
-    "@prisma/adapter-libsql": "^6.19.1",
     "@prisma/client": "^6.19.1",
     "bcryptjs": "^3.0.2",
-    "dotenv": "^16.4.5",
-    "ml-kmeans": "^6.0.0",
-    "next": "^15.5.9",
+    "ml-kmeans": "^7.0.0",
+    "next": "^16.0.10",
     "next-auth": "^4.24.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zod": "^4.1.9"
+    "sonner": "^2.0.7",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.13",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "autoprefixer": "^10.4.21",
-    "dotenv-cli": "^7.4.4",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.3",
-    "postcss": "^8.5.6",
     "prisma": "^6.19.1",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.19.2",
     "typescript": "^5"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node prisma/seed.cjs"
   }
 }
